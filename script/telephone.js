@@ -1,0 +1,1135 @@
+// telephone project namespace
+var TELEPHONE = function() {
+
+	/*! private variables */
+
+	var debug = false;
+	var session;
+	var myName;
+	var myConnectionId;
+	var state = {};
+	var apiKey = 221591;
+	var maxPlayers = 5;
+	var camWidth = 160;
+	var camHeight = 120;
+	var timer;
+	var timerDuration = 30; // seconds
+	var firstIn;
+
+
+	/*! video setup and connection */
+	
+	var init = function() {
+
+		// turn on cross-browser logging if it's available
+		// via http://plugins.jquery.com/project/jQueryLog
+		(function(a) {
+			a.log = function() {
+				if (debug && window.console && window.console.log) {
+					console.log.apply(window.console,arguments);
+					}
+				};
+			 a.fn.log = function() {
+			 	a.log(this);
+			 	return this;
+			 };
+			})(jQuery);			
+
+	
+		// set up the tokbox api
+		if (debug) {
+			TB.setLogLevel(TB.DEBUG);
+			TB.addEventListener('exception', function(event) {
+				// handle exception
+				alert('Exception: ' + event.code + '::' + event.message); // TODO change to throws
+			});
+		}
+		else {
+			TB.setLogLevel(TB.NONE);		
+		}
+		
+		// check requirements
+		if (TB.checkSystemRequirements() !== TB.HAS_REQUIREMENTS) {
+			// redirect to a page listing requirements if the browser doesn't pass
+			window.location = '/requirements';
+		}
+		
+		// set up name submit button
+		$('form#enter-name').unbind();
+		$('form#enter-name').submit(function(event) {
+			// handle name clicked		
+			event.preventDefault();
+			var input = $('form#enter-name input.text').val();
+			
+			// note special input case since the name is dynamic...
+			if((input === '') || (input === 'Your Name') || (input.length > 15)) {
+				// invalid input
+				$('form#enter-name input.text').addClass('error');
+			}
+			else {
+				// valid input			
+				// remove click handler, ignore repeat presses
+				$(this).unbind(); // remove this handler
+				$(this).submit(function(event) { event.preventDefault(); }); // bs event to keep future clicks away from the browser			
+			
+				myName = input;
+				
+				// save it for the next round
+				$('#final-bubble input[name=name]').val(myName);				
+				
+				$('form#enter-name input.text').removeClass('error');	
+				$('form#enter-name input.button').addClass('pressed'); // hold the button down, post hover			
+				document.getElementById('ringer').ringOnce(0.15); // that's the volume, 0 to 1
+				document.getElementById('ringer2').ringOnce(); // second ringer in game area
+				$('#scrollfield').delay(1800).scrollTo('1519px', 2500, {easing: 'easeInOutQuart', onAfter: findGame}); // scroll to next window, then look for active games
+			}
+		});
+	};
+	
+	
+	var findGame = function() {
+		$.log('finding a game');
+		$.ajax({type: 'GET',
+						dataType: 'json',
+						url: '/api/find-game',
+						cache: false,
+						async: false,
+						success: gameFoundHandler
+		});
+	};
+	
+	
+	var gameFoundHandler = function(response) {
+		$.log('found a game');
+		if (response.status === 'wait') {
+			// wait for other pepole to file in before trying to connect (if they joined before a server-side timeout)
+			$.log('waiting ' + response.duration + ' seconds and trying again');
+			setTimeout(function() { findGame() }, (response.duration + 1) * 1000);
+			
+			// TODO update the joined time right after someone gets added to the game? (to account for security acceptance time disparities, etc.?)
+		}
+		else if (response.status === 'success') {
+			// all's clear, connect right away
+			firstIn = response.first_in; // set this global, true if the session should be empty
+			setUpSession(response.session_id, response.token);
+		}
+	};
+	
+	
+	var setUpSession = function(session_id, token) {
+		// handle session id received
+		$.log('setting up session');
+		session = TB.initSession(session_id); // start up the tokbox session
+	
+		// create event listeners, truncated set of API events we actually care about
+		session.addEventListener('sessionConnected', sessionConnectedHandler);
+		session.addEventListener('streamCreated', streamCreatedHandler);
+		session.addEventListener('streamDestroyed', streamDestroyedHandler);
+		session.addEventListener('signalReceived', stateReceivedHandler);
+		
+		session.connect(apiKey, token); // connect automatically, program flow continues in sessionConnectedHandler
+	};
+	
+
+	var setConsoleName = function(connection_id, name) {
+		$('#' + connection_id + ' p.nametag').html(name.replace(' ', '&nbsp;')); // no line breaks
+	};	
+	
+	
+	var setUpConsole = function(connection_id) {
+		// make sure it doesn't already exist, and that it's not dead
+		if ((connection_id !== 0) && $('#' + connection_id).length === 0) {
+			var freeConsole = $('div.console.empty').first(); 	// returns jquery element of right-most uninhabited console	
+			freeConsole.removeClass('empty');							
+			freeConsole.attr('id', connection_id);
+			freeConsole.find('.camera-placeholder').attr('id', 'camera-placeholder-' + connection_id);
+			freeConsole.find('div.screen').addClass('used'); // background fuzz
+		}
+	};
+	
+
+	var sessionConnectedHandler = function(sessionConnectEvent) {
+		// handle session connected
+		myConnectionId = session.connection.connectionId; // convenience
+
+		// create a fresh game if the room is empty, server can't catch this because of the "last exit" problem
+		if ((sessionConnectEvent.streams.length === 0) && (!firstIn)) {
+			// run findGame again if you should not be the first player... TODO disconnect?
+			$.log('room is empty, it is abandoned!');
+			setState({status_message: 'abandoned'});
+			findGame();				
+			return;
+		}
+		
+		// try again if the room is full, this is a last resort since the server should catch most of these
+		if (sessionConnectEvent.streams.length >= maxPlayers) {
+			$.log('room is full, it is abandoned!');		
+			findGame();
+			return;
+		}
+		
+		// add yourself to the player list
+		$.ajax({type: 'POST',
+						dataType: 'json',
+						data: {session_id: session.sessionId, player_id: myConnectionId, player_name: myName},
+						url: '/api/add-player',
+						cache: false,
+						async: false,
+						success: function(playerList) {
+							$.log('player list:');
+							$.log(playerList);
+							state.players = playerList;
+							
+							// add the others
+							streamCreatedHandler({streams: sessionConnectEvent.streams}, true);
+							
+							// set up myself
+							$.log('my name: ' + myName);
+							setUpConsole(myConnectionId);
+							setConsoleName(myConnectionId, myName);
+							publisher = session.publish('camera-placeholder-' + myConnectionId, { width: camWidth, height: camHeight, microphoneEnabled: false, name: myName, mirror: false }); // TODO mirror?			
+						
+							// catch and handle flash permission stuff
+							publisher.addEventListener('resize', function(resizeEvent) { 
+								$.log('in resize event');
+								$.log(resizeEvent);
+								
+								// If width to is 215, then we know it's trying to get permission
+								if (resizeEvent.widthTo === '215') {
+									$.log('requesting camera permission');
+									var topOffset = (Math.round(($(window).height() / 2) - (138 / 2))) - 100;
+									var leftOffset = Math.round(($(window).width() / 2) - (215 / 2));					
+				
+									$('#' + publisher.id).offset({left: leftOffset, top: topOffset});
+									$('#' + publisher.id).css({'z-index': 10, width: 215, height: 138});	
+								}
+								else {
+									$.log('got camera permission');
+									$.log($('#' + publisher.id));
+									$('#' + publisher.id).css({'z-index': 'inherit', width: camWidth, height: camHeight, left: 0, top: 0});
+								}
+							});
+							
+							touch(); // update time...	
+						}
+		});
+	};
+	
+	
+	var streamCreatedHandler = function(streamEvent, fromStartup) {
+		$.log(streamEvent.streams.length + ' stream(s) created');
+		
+		if (!fromStartup) {
+			getState(null);
+		}
+
+		// set up new consoles as necessarry		
+		for (var j = 0; j < state.players.length; j += 1) {
+			setUpConsole(state.players[j]);
+		}		
+
+		for (var i = 0; i < streamEvent.streams.length; i += 1) {		
+
+			if (myConnectionId !== streamEvent.streams[i].connection.connectionId) {
+				$.log('stream was not me, adding stream: ' + streamEvent.streams[i].connection.connectionId);				
+				setConsoleName(streamEvent.streams[i].connection.connectionId, streamEvent.streams[i].name);
+				session.subscribe(streamEvent.streams[i], 'camera-placeholder-' + streamEvent.streams[i].connection.connectionId, { width: camWidth, height: camHeight, audioEnabled: false });
+			}
+			else {
+				$.log('Stream was me... adding me to the player list')		
+				broadcastState({'status_message': 'player ' + state.players.length + ' joined'});
+				$('#connecting-to-tokbox').fadeOut();
+				// rest is handled in onstatechange			
+			}
+		}
+		
+		$.log('players:');
+		$.log(state.players);
+	};
+	
+	
+	
+
+	/*! players removed */
+
+	var streamDestroyedHandler = function(streamEvent) {
+		// todo use connection destroyed instead?	streamDestroyed doesn't seem to fire with just two streams.
+	
+		clearInterval(timer);
+	
+		$.log(streamEvent.streams.length + ' stream(s) destroyed');
+	
+		for (var i = 0; i < streamEvent.streams.length; i += 1) {
+				
+			// will get sent to the server more than once by different players... so what?
+			// TODO, have new first player send?
+
+			$.ajax({type: 'POST',
+							dataType: 'json',
+							doomedConsole: $('#' + streamEvent.streams[i].connection.connectionId),
+							data: {session_id: session.sessionId, player_id: streamEvent.streams[i].connection.connectionId},
+							url: '/api/remove-player',
+							cache: false,
+							success: function(playerList) {
+								// recycle the console
+								var startWidth = this.doomedConsole.width();
+		
+								this.doomedConsole.animate({opacity: 0}, {duration: 1000, queue: true, easing: 'easeInOutQuart', complete: function() { // fade it out
+									// reset the console to its original state
+									$(this).removeAttr('id');
+									$(this).addClass('empty');
+									$(this).find('div.screen').removeClass('used');
+									$(this).find('div.screen').html('<div class="camera-placeholder"></div>');
+									$(this).find('p.osd').html('');
+									$(this).find('p.nametag').html('');
+									$(this).find('span.debug').html('Debug');
+									if ($(this).find('div.light').is(':visible')) {
+										$(this).find('div.light').fadeOut();			
+									}
+								
+									// squeeze it
+									$(this).animate({width: 0}, {duration: 1500, queue: true, easing: 'easeInOutQuart', complete: function() {
+										// move to end of row and fade back in
+										$(this).appendTo($('#consoles')); 
+										$(this).width(startWidth);
+										$(this).animate({opacity: 1}, {duration: 1000, easing: 'easeInOutQuart', queue: true});		
+									}});
+								
+								}});
+
+								$.log('removed player, new list:');
+								$.log(playerList);
+								var oldPlayers = state.players;
+								var lastActiveIndex = state.activeIndex;
+								state.players = playerList;
+								
+								// broadcast if you're the new first player
+								if (state.players.getIndexOf(myConnectionId) === 0) {
+									$.log('You are now the first player');
+									// need to set:
+									// active index
+									// operatorId
+									
+									if(lastActiveIndex == 0) {
+										// just reset
+										// need to reset phrase?
+										//if (state.founder_name !== ) {
+										//	state.founder_name = 
+										//}
+										
+										state.active_index = 0; 
+										state.operator_id = myConnectionId;
+									}
+									else {
+										// figure out who is active, if anyone, walk back from the last person
+										for (var i = lastActiveIndex; i >= 0; i -= 1) {
+											if (state.players.getIndexOf(oldPlayers[i]) >= 0) {
+												state.active_index = state.players.getIndexOf(oldPlayers[i]);
+												state.operator_id = state.players(state.active_index);
+												break;
+											}
+										}
+									}
+									
+									
+									delete state.players;
+									delete state.id;
+									delete state.time_last_joined;
+									delete state.time_created;									
+																		
+									// broadcast
+									$.log('broadcasting post-drop game state');
+									$.log(state);
+									broadcastState(state);
+								}
+								
+								
+								
+								
+							}
+			});
+		}
+		
+	};
+	
+	
+	
+	
+	/*! update game state */
+	
+	var onStateChange = function() {
+		$.log('=====================  state change =====================');
+
+		// possible states
+		var gamePhase;
+		var myRole;
+		
+		var gamePhase = {
+			waitingForStartPhraseAndMorePlayers: 0,
+			waitingForStartPhrase: 1,
+			waitingForMorePlayers: 2,
+			passingMessage: 3,
+			waitingForFinalPhrase: 4,
+			showingFinalPhrase: 5
+		};
+		
+		var gamePhaseNames = ['waitingForStartPhraseAndMorePlayers',
+			'waitingForStartPhrase',
+			'waitingForMorePlayers',
+			'passingMessage',
+			'waitingForFinalPhrase',
+			'showingFinalPhrase'];
+			
+		var roles = {
+			beforeTalker: 0,
+			talker: 1,
+			listener: 2,
+			afterListener: 3
+		};
+		
+		var roleNames = ['beforeTalker',
+		'talker',
+		'listener',
+		'afterListener'];
+		
+		// figure out my role
+		var talkerIndex = state.active_index;
+		var listenerIndex = state.active_index + 1;
+		var myIndex = state.players.getIndexOf(myConnectionId);	
+	
+		if (myIndex < talkerIndex) myRole = roles.beforeTalker;			
+		if (myIndex === talkerIndex) myRole = roles.talker;
+		if (myIndex === listenerIndex) myRole = roles.listener;			
+		if (myIndex > listenerIndex) myRole = roles.afterListener;					
+	
+
+		// figure out game phase
+		if (isNull(state.start_phrase) && (state.players.length < 3)) {
+			phase = gamePhase.waitingForStartPhraseAndMorePlayers;		
+		}
+		
+		if (isNull(state.start_phrase) && (state.players.length >= 3)) {
+			phase = gamePhase.waitingForStartPhrase;
+		}
+		
+		if (!isNull(state.start_phrase) && (state.players.length < 3) && (state.status_message !== 'finished')) {
+			phase = gamePhase.waitingForMorePlayers;	
+		}
+		
+	 	if (!isNull(state.start_phrase) && (state.players.length >= 3) && (state.active_index < state.players.length - 1)) {
+			phase = gamePhase.passingMessage;	
+		}
+		
+		if (!isNull(state.start_phrase) && (state.players.length >= 3) && (state.active_index >= state.players.length - 1) && isNull(state.end_phrase)) {
+			phase = gamePhase.waitingForFinalPhrase;
+		}
+		
+		if (!isNull(state.end_phrase)) {
+			phase = gamePhase.showingFinalPhrase;
+		}
+		
+		$.log('Game phase: ' + gamePhaseNames[phase]);
+		$.log('My role: ' + roleNames[myRole]);		
+		
+		// TODO store last phase, only reset everything if phase changes?
+		
+		// exceptions to resetting everything
+		var stillWaitingForStartPhrase = false;
+		if ((myIndex === 0) && (phase === gamePhase.waitingForStartPhraseAndMorePlayers) || (phase === gamePhase.waitingForStartPhrase)) {
+			stillWaitingForStartPhrase = true;
+		}
+		
+		
+		
+		// reset everything (possible exceptions?)
+		if($('#waiting-for-players').is(':visible')) $('#waiting-for-players').fadeOut();									
+		if(!stillWaitingForStartPhrase && $('form#enter-start-phrase').is(':visible')) $('form#enter-start-phrase').fadeOut();
+		if($('#waiting-for-start-phrase').is(':visible')) $('#waiting-for-start-phrase').fadeOut();
+		
+		if($('#talker-message').is(':visible')) $('#talker-message').fadeOut();				
+		if($('#waiting-message').is(':visible')) $('#waiting-message').fadeOut();				
+		if($('form#got-it').is(':visible')) $('form#got-it').fadeOut();				
+		
+		if($('form#enter-end-phrase').is(':visible')) $('form#enter-end-phrase').fadeOut();
+		if($('#waiting-for-end-phrase').is(':visible')) $('#waiting-for-end-phrase').fadeOut();		
+		
+		document.getElementById('cables').setConnections('[]');			
+			
+		$('.light').fadeOut(); // fade out all lights
+		
+		clearInterval(timer);
+
+		// get the names!		
+		var talkerName = $('#' + state.players[talkerIndex] + ' p.nametag').html();
+		var listenerName = $('#' + state.players[listenerIndex] + ' p.nametag').html();								
+		var lastName = $('#' + state.players[state.players.length - 1] + ' p.nametag').html();
+		
+		// figure out what to display, given our perspective
+		
+		// beginning
+		if (phase === gamePhase.waitingForStartPhraseAndMorePlayers) {
+			if (myIndex === 0) {
+				// you're the first player, you need to enter the phrase
+				if($('form#enter-start-phrase').is(':hidden')) showStartPhraseForm();
+			}
+			else {
+				// otherwise, you're told to round people up			
+				$('#waiting-for-players').fadeIn();				
+			}
+			
+			// everyone talks
+			unMuteEveryone();			
+		}
+		
+		if (phase === gamePhase.waitingForStartPhrase) {
+			if (myIndex === 0) {
+				// you're the first player, you need to enter the phrase
+				if($('form#enter-start-phrase').is(':hidden')) showStartPhraseForm();
+			}
+			else {
+				// otherwise, you're told who you're waiting on
+				$('#waiting-for-start-phrase').fadeIn();
+			}
+			
+			// everyone talks			
+			unMuteEveryone();			
+		}
+		
+		if (phase === gamePhase.waitingForMorePlayers) {
+			$('#waiting-for-players').fadeIn();
+			
+			// everyone talks
+			unMuteEveryone();
+		}
+
+		// middle
+		if (phase === gamePhase.passingMessage) {
+				
+			if ((myRole === roles.beforeTalker) || (myRole === roles.afterListener)) {
+				startTimerOnElement(timerDuration + myIndex + 1, $('#waiting-message .timer'));				
+			
+				$('#waiting-message span.talker-name').html(talkerName);
+				$('#waiting-message span.listener-name').html(listenerName);					
+				$('#waiting-message').fadeIn();
+			}
+			
+			if (myRole === roles.talker) {
+				startTimerOnElement(timerDuration + myIndex + 1, $('#talker-message .timer'));
+
+				$('#talker-message .listener-name').html(listenerName);
+				$('#talker-message').fadeIn();									
+			}
+
+			if (myRole === roles.listener) {
+				startTimerOnElement(timerDuration, $('form#got-it .timer'));
+				showGotItForm();
+			}
+			
+			// cables
+			var connections = [];
+			connections.push([talkerIndex, listenerIndex]);					
+			$.log(connections);
+			$.log('showing cable connections: ' + JSON.stringify(connections));	
+			document.getElementById('cables').setConnections(JSON.stringify(connections));							
+				
+			// lights
+			$('#' + state.players[talkerIndex] + ' .light').fadeIn();
+			$('#' + state.players[listenerIndex] + ' .light').fadeIn();			
+			
+			setAllAudio(myRole, roles);
+		}
+		
+		// end
+		if (phase === gamePhase.waitingForFinalPhrase) {
+			if (myIndex === (state.players.length - 1)) {
+				// you enter the final phrase
+				showEndPhraseForm();
+			}
+			else {
+				// waiting for the final phrase
+				$('#waiting-for-end-phrase span.name-message').html(lastName);									
+				$('#waiting-for-end-phrase').fadeIn();
+			}
+			
+			// everyone silenced
+			muteEveryone();
+		}
+		
+		if (phase === gamePhase.showingFinalPhrase) {		
+			// everyone sees the same thing
+			$('#startPhrase').html(state.start_phrase);					
+			fitText($('#startPhrase'));
+			
+			$('#endPhrase').html(state.end_phrase);					
+			fitText($('#endPhrase'));					
+	
+			// set up play again button, redirects with name
+			$('form#final-bubble').unbind();
+			$('form#final-bubble').submit(function(event) {
+				// handle name clicked, and ignore repeats		
+				$(this).unbind(event); // remove this handler
+				$('form#final-bubble input.button').addClass('pressed'); // hold the button down, post hover						
+			});		
+	
+			// scroll to end screen
+			$('#scrollfield').scrollTo('2816px', 2500, {easing: 'easeInOutQuart'});
+			
+			// everyone talks
+			unMuteEveryone();
+		}
+		
+		
+		
+	};		
+	
+	
+	var showGotItForm = function() {
+		$('form#got-it').hide();										
+		$('form#got-it').removeClass('hidden');																				
+		$('form#got-it').fadeIn();				
+		$('form#got-it').unbind(); // clear current bindings... prevents multiple clicks
+		$('form#got-it').submit(function(event) {
+			// handle name clicked		
+			event.preventDefault();
+	
+			// remove click handler, ignore repeat presses
+			$(this).unbind(event); // remove this handler
+			$(this).submit(function(event) { event.preventDefault(); }); // bs event to keep future clicks away from the browser
+				
+			$('form#got-it input.button').addClass('pressed'); // hold the button down, post hover
+			
+			// clear the timer to prevent repeat firings
+			clearInterval(timer);
+	
+			$.log('got it');
+	
+			if ((state.active_index + 1 ) >= (state.players.length - 1)) {
+				// close the game if this is the last person
+				broadcastState({'status_message': 'next player', 'active_index': (state.active_index + 1), 'operator_id': state.players[state.active_index + 1], 'status_message': 'finished'});
+			}
+			else {
+				// keep going
+				broadcastState({'status_message': 'next player', 'active_index': (state.active_index + 1), 'operator_id': state.players[state.active_index + 1]});
+			}
+		});	
+	}
+	
+	
+	var startTimerOnElement = function(duration, $element) {
+		// countdown timer
+		var timeCounter = duration;
+		timer = setInterval(function() { 
+			// format seconds
+			var minutes = Math.floor(timeCounter / 60);
+			var seconds = timeCounter % 60;
+	
+			// pad the minutes
+			if (minutes < 10) {
+				minutes = '0' + minutes;
+			}		
+		
+			// pad the seconds
+			if (seconds < 10) {
+				seconds = '0' + seconds;
+			}
+					
+			$element.text(minutes + ':' + seconds);
+		    
+			if (timeCounter === 0) {
+				clearInterval(timer);
+				$.log('timer finished');
+				// after timer runs out, broadcast state change							
+				//broadcastState({'message': 'next player', 'active_index': (state.active_index + 1), 'operator_id': state.players[state.active_index + 1]});												
+				
+				// do it manually?
+				//$('form#got-it').submit();
+				
+				// next step
+				if ((state.active_index + 1 ) >= (state.players.length - 1)) {
+					// close the game if this is the last person
+					broadcastState({'status_message': 'next player', 'active_index': (state.active_index + 1), 'operator_id': state.players[state.active_index + 1], 'status_message': 'finished'});
+				}
+				else {
+					// keep going
+					broadcastState({'status_message': 'next player', 'active_index': (state.active_index + 1), 'operator_id': state.players[state.active_index + 1]});
+				}				
+			}
+			else {
+				timeCounter--;
+			}	
+			 
+		}, 1000);			
+	};
+	
+	
+	var showStartPhraseForm = function() {
+			// you need to set the phrase, add the phrase bubble
+			$('form#enter-start-phrase').delay(2000).fadeIn();
+			$('form#enter-start-phrase').unbind();
+			$('form#enter-start-phrase').submit(function(event) {
+				event.preventDefault();
+				var input = $('form#enter-start-phrase input.text').val();
+	
+				if((input === '') || (input === $('form#enter-start-phrase input.text').data('startValue')) || (input.length > 140)) {		
+					// invalid input
+					$('form#enter-start-phrase input.text').addClass('error');					
+				}
+				else {
+					// valid input			
+					// remove click handler, ignore repeat presses
+					$(this).unbind(); // remove this handler
+					$(this).submit(function(event) { event.preventDefault(); }); // bs event to keep future clicks away from the browser			
+					$('form#enter-start-phrase input.button').addClass('pressed'); // hold the button down, post hover										
+					
+					// send this to the server, it will trigger the game if there are at least three players
+					broadcastState({start_phrase: input});
+				}
+			});	
+	}
+	
+	var showEndPhraseForm = function() {
+		// Add phrase bubble
+		$('form#enter-end-phrase').delay(2000).fadeIn();
+		
+		$('form#enter-end-phrase').unbind(); // clear current bindings... prevents multiple clicks
+		$('form#enter-end-phrase').submit(function(event) {
+			event.preventDefault();
+			var input = $('form#enter-end-phrase input.text').val();					
+		
+			if((input === '') || (input === $('form#enter-end-phrase input.text').data('startValue')) || (input.length > 140)) {
+				// invalid input
+				$('form#enter-end-phrase input.text').addClass('error');										
+			}
+			else {
+				// valid input			
+				// remove click handler, ignore repeat presses
+				$(this).unbind(); // remove this handler
+				$(this).submit(function(event) { event.preventDefault(); }); // bs event to keep future clicks away from the browser			
+				$('form#enter-end-phrase input.button').addClass('pressed'); // hold the button down, post hover																
+			
+				// send to the server, it will move everyone to the final page
+				broadcastState({end_phrase: input, ender_name: myName});
+			}
+		});		
+	}
+
+	
+
+	
+	/*! state synchronization */
+	
+	var broadcastState = function(stateObject) {
+		// uploads changes to the database, which are then broadcast	
+		
+		setState(stateObject);
+		$.log('set state... sending signal');
+	  session.signal();
+	};
+	
+	
+	// just uploads changes to database, no broadcast
+	var setState = function(stateObject) {
+		stateObject.session_id = session.sessionId;
+
+		// upload state to server
+		$.ajax({type: 'POST',
+						dataType: 'json',
+						async: false,
+						data: stateObject,
+						url: '/api/set-state',
+						cache: false,
+            error:function (xhr, ajaxOptions, thrownError){
+            	$.log('STATE UPDATE ERROR');
+	            $.log(xhr);
+	            $.log(ajaxOptions);
+	            $.log(thrownError);                                        
+						} 						
+		});
+	};
+	
+	
+	var touch = function() {
+		$.ajax({type: 'POST',
+						dataType: 'json',
+						data: {session_id: session.sessionId},						
+						async: true,
+						url: '/api/touch',
+						cache: false
+		});			
+	};
+	
+	
+	var getState = function(stateReceivedCallback) {
+		$.ajax({type: 'POST',
+						dataType: 'json',
+						data: {session_id: session.sessionId},
+						url: '/api/get-state',
+						cache: false,
+						async: false,
+						success: function(newState) {
+							// got the state back from the server
+							$.log('Message: ' + newState.message);							
+							$.log('new State:');
+							$.log(newState);
+							
+							// set global state (tsk tsk);
+							state = newState;
+							
+							// fire the callback
+							if (!isNull(stateReceivedCallback)) {
+								stateReceivedCallback(state);
+							}
+						}
+		});
+	}
+		
+		
+	var stateReceivedHandler = function(signalEvent) {
+		// download state once we get the signal
+		$.log('signal received, getting state');
+		getState(onStateChange);
+	};
+	
+
+	
+	/*! audio management */
+
+	var unMuteEveryone = function() {
+		for (var i = 0; i < state.players.length; i += 1) {
+			unMute(state.players[i]);
+		}	
+	}
+	
+	var muteEveryone = function() {
+		for (var i = 0; i < state.players.length; i += 1) {
+			mute(state.players[i]);
+		}	
+	}	
+
+	var setAllAudio = function(myRole, roles) {
+		// turns stream audio on and off depending on who you are	
+	
+		var talkerIndex = state.active_index;
+		var listenerIndex = state.active_index + 1;
+		var myIndex = state.players.getIndexOf(myConnectionId);
+		
+		for (var i = 0; i < state.players.length; i += 1) {
+			// go through each player, figure out if they can see and who they can hear
+		
+			if (isNull(state.start_phrase) || (state.players.length < 3)) {
+				// waiting for game to start, everyone talks
+				unMute(state.players[i]);				
+			}
+			else if (isNull(state.end_phrase) && (state.status_message == 'finished')) {
+				// waiting for last listener to type what they heard
+				mute(state.players[i]);
+			}
+			else if (!isNull(state.end_phrase) && (state.status_message == 'finished')) {
+				// very end of game, everyone speaks
+				unMute(state.players[i]);
+			}
+			else if (i < talkerIndex) {
+				// before the talker (only unmute if there are more than two people)
+				if ((myRole === roles.beforeTalker) && (talkerIndex > 1)) {
+					unMute(state.players[i]);
+				}
+				else {
+					mute(state.players[i]);
+				}
+			}
+			else if (i === talkerIndex) {
+				// the talker
+				if ((myRole === roles.talker) || (myRole === roles.listener)) {					
+					unMute(state.players[i]);
+				}
+				else {
+					mute(state.players[i]);					
+				}
+			}
+			else if (i === listenerIndex) {
+				// the listener
+				if ((myRole === roles.talker) || (myRole === roles.listener)) {
+					unMute(state.players[i]);
+				}
+				else {
+					mute(state.players[i]);			
+				}
+			}
+			else if (i > listenerIndex) {
+				// after listener (only unmute if there are more than two people)
+				if ((myRole === roles.afterListener) && (listenerIndex < (state.players.length - 2))) {
+					unMute(state.players[i]);
+				}
+				else {
+					mute(state.players[i]);					
+				}
+			}
+			else {
+				// mute everyone
+				$.log('mute everyone');
+				mute(state.players[i]);
+			}
+		}
+	};
+	
+	
+	var mute = function(id) {
+		setAudio(id, true);
+		$('#' + id + ' p.osd').html('MUTE');
+	};
+	
+	
+	var unMute = function(id) {
+		setAudio(id, false);		
+		$('#' + id + ' p.osd').html('LIVE');		
+	};
+	
+	
+	var setAudio = function(id, shouldMute) {
+		// lets us ignore whether we're muting or unmuting ourselves or someone else
+	
+		if (id === myConnectionId) {
+			shouldMute ? publisher.disableMicrophone() : publisher.enableMicrophone();
+		}
+		else {
+			// have to use the ugly for in because the subscribers object has no length property
+			for (var i in session.subscribers) {
+				if (session.subscribers.hasOwnProperty(i)) {
+					if (id === session.subscribers[i].stream.connection.connectionId) {
+						shouldMute ? session.subscribers[i].disableAudio() : session.subscribers[i].enableAudio();
+					}
+				}
+			}
+		}
+	};	
+	
+	
+	
+	/*! interface miscellanea */
+	
+	var setUpWidgets = function() {
+		// gets the DOM into shape
+	
+		// load the widgets... tokbox kindly provides swfobject 2.2	
+		swfobject.embedSWF('/flash/clock.swf', 'clock', '160', '160', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'never'}, {align: 'middle', styleclass: 'widget'});
+		swfobject.embedSWF('/flash/ringer.swf', 'ringer', '200', '200', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'always'}, {align: 'middle', styleclass: 'widget'});
+		swfobject.embedSWF('/flash/ringer2.swf', 'ringer2', '120', '130', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'always'}, {align: 'middle', styleclass: 'widget'});
+		swfobject.embedSWF('/flash/stapler.swf', 'stapler', '120', '50', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'always'}, {align: 'middle', styleclass: 'widget'});
+		swfobject.embedSWF('/flash/radio.swf', 'radio', '120', '50', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'always'}, {align: 'middle', styleclass: 'widget'});
+		swfobject.embedSWF('/flash/TelephonePatch.swf', 'cables', '899', '130', '10.0.0', false, {}, {wmode: 'transparent', allowscriptaccess: 'always'}, {align: 'middle', styleclass: 'widget'});
+
+		// mousepad allows clicking through shadows
+		mousePad($('#stapler'), $('#scrollfield'), function() {
+			document.getElementById('stapler').staple(0.5);		
+		});
+
+		mousePad($('#radio'), $('#scrollfield'), function() {
+			document.getElementById('radio').tuneRadio(0.10);		
+		});
+		
+		// get game messages ready for fade
+		// TODO just use the class selector, handle the edge cases
+		// or build a metter message display system
+		$('div#waiting-for-players').hide();										
+		$('div#waiting-for-players').removeClass('hidden');
+		$('div#waiting-for-start-phrase').hide();										
+		$('div#waiting-for-start-phrase').removeClass('hidden');		
+		$('div#waiting-for-end-phrase').hide();										
+		$('div#waiting-for-end-phrase').removeClass('hidden');				
+		$('div#talker-message').hide();										
+		$('div#talker-message').removeClass('hidden');
+		$('div#waiting-message').hide();										
+		$('div#waiting-message').removeClass('hidden');		
+		$('div.light').hide();
+		$('div.light').removeClass('hidden');		
+		$('form#enter-start-phrase').hide();
+		$('form#enter-start-phrase').removeClass('hidden');
+		$('form#enter-end-phrase').hide();										
+		$('form#enter-end-phrase').removeClass('hidden');																						
+		
+		// set up forms
+		valueIsLabel($('form#enter-name input.text'));
+		valueIsLabel($('form#enter-start-phrase input.text'));		
+		valueIsLabel($('form#enter-end-phrase input.text'));
+		
+		if ($.browser.msie) {
+			// remove shadows since z-depth is broken in IE
+			$('div.stage-shadow').remove();
+		}
+	
+		// interval to detect the settings panel
+		// TODO ditch this for the API callbacks
+		var panelCheck = setInterval(function() { 
+			var $panel = $('div[id*=devicePanel_parent_publisher_]');
+			if ($panel.length > 0) {
+				$panel.css('z-index', 5);
+			}
+		}, 1000);
+	
+		// set up share link field, auto-selects for easy cut and paste
+		$('.share-url').click(function() {
+			$(this).focus();
+			$(this).select();
+		});
+		
+		// set up hoverpads to fix firefox rollover depth issue (similar to mousepads)
+		$('div.hoverpad').mouseenter(function() { 
+			if($(this).parent().find('object').length > 0) {		
+				var that = this;
+				$(this).css('z-index', -1);
+				$(this).parent().find('object').css('z-index', 5);
+				
+				$(this).parent().mouseleave(function() {
+					$(this).find('object').css('z-index', 'inherit');					
+					$(this).find('div.hoverpad').css('z-index', 5);
+					$(this).unbind();
+				});				
+			}			
+		});
+	
+		// disable the tab key, focus jumping scrolls the scrollfield in an unhappy way
+		// TODO beter alternative in detecting scrolling and forcing instand reposition?
+		$(window).keydown(function(e){
+	    var key = e.charCode ? e.charCode : e.keyCode;
+	    if (key === 9){
+	       return false;
+	    }
+	    return true;
+		});
+		
+		// the abort link
+		$('a#abort').click(function(event) {
+			event.preventDefault();
+			
+			// mark the game as no good,
+			// the rest of the players in this session can keep playing if they like
+			setState({status_message: 'abandoned'});
+			
+			// start a new one
+			$('form#final-bubble').submit();
+			
+			//window.location = '/';			
+		});
+		
+		
+	};
+	
+	
+	
+	/*! javascript remediation */
+	
+	var valueIsLabel = function($element) {
+		// swaps default input field text in and out
+		// so we don't have to use bulky field labels
+		
+		var startValue = $element.val();
+		
+		$element.data('startValue', startValue);
+		
+		$element.focus(function() {
+			if ($element.val() === startValue) {
+				$element.val('');
+				$element.addClass('usercontent');
+			}
+		});
+	
+		$element.blur(function() {
+			if (($element.val() === '') || ($element.val() === startValue)) {
+				$element.val(startValue);
+				$element.removeClass('usercontent');
+			}
+		});	
+	};
+	
+	
+	var fitText = function($text) {
+		// grows or shrinks text until it reaches a certain height
+		// TODO add sanity protection to avoid infinite loops?
+	
+		while ($text.height() < 80) {
+			// unary + forces type conversion
+			$text.css('font-size', +$text.css('font-size').slice(0, -2) + 1);
+		}
+		
+		while ($text.height() >= 80) {
+		$text.css('font-size', +$text.css('font-size').slice(0, -2) - 1);
+		}
+	};
+	
+
+	var mousePad = function($element, $container, callback) {
+		// puts a foreground click pane over an element,
+		// useful for clicking flash objects through the shadow overlays	
+	
+		// get dimensions
+		var $hitArea = $('<div class="mousepad"><div/>');
+		$container.append($hitArea);
+		
+		$hitArea.css({
+			position: 'absolute',
+			top: $element.position().top + 'px',
+			left: $element.position().left + 'px',
+			background: 'transparent',
+			'z-index': 2,
+			cursor: 'pointer',
+			width: $element.width() + 'px',
+			height: $element.height() + 'px'
+		});
+		
+		$hitArea.click(callback);
+	};
+		
+	
+	// only finds first occurrance
+	Array.prototype.getIndexOf = function(value) {
+		for (var i = 0; i < this.length; i += 1) {
+			if(this[i] === value) return i;
+		}
+		return -1;
+	};
+	
+
+	// only removes first occurrance
+	Array.prototype.removeValue = function(value) {
+		var index = this.getIndexOf(value);
+	  return this.removeIndex(index);
+	};
+	
+	
+	// only removes first occurrance
+	Array.prototype.removeIndex = function(index) {
+	  this.splice(index, 1);
+	  return this;
+	};
+	
+	
+	var isNull = function(test) {
+		return ((test === null) || (test === 'null'));
+	};	
+	
+
+	/*! public methods */
+	
+	return {
+		setUpWidgets: setUpWidgets,
+		init: init
+	};
+
+}();
+
+$(document).ready(function() {
+	// too early to start the game, on account of the flash external interfaces
+	// TODO get callback from swfobject and proceed from there?
+	TELEPHONE.setUpWidgets();	
+});
+
+$(window).load(function() {
+	// restore background color
+	$('body, html').css('background', '#f7f6e2');
+	
+	// fade out overlay	
+	$('#curtain').fadeOut(600, 'easeInQuart', function() { $(this).remove(); }); // fade and remove from screen
+	
+	// start the game
+	TELEPHONE.init();
+});

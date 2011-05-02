@@ -1,0 +1,154 @@
+$def with (name)
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+	<head>
+		<meta http-equiv="Content-type" content="text/html; charset=utf-8">
+		<title>The Game of Telephone</title>
+		<link rel="shorcut icon" href="/graphics/favicon.ico">		
+		<link rel="stylesheet" type="text/css" media="all" href="/css/reset-min.css">
+		<link rel="stylesheet" type="text/css" media="all" href="/css/screen.css">
+		<script src="http://static.opentok.com/v0.91.7/js/TB.min.js" type="text/javascript"></script>
+		<script src="/script/json2-min.js" type="text/javascript"></script>		
+		<script src="/script/jquery-1.4.4.js" type="text/javascript"></script>
+		<script src="/script/jquery-ui-1.8.8.custom.min.js" type="text/javascript"></script>						
+		<script src="/script/jquery.scrollTo-1.4.2-min.js" type="text/javascript"></script>
+		<script src="/script/telephone.js" type="text/javascript"></script>
+		<noscript>
+			<meta http-equiv="refresh" content="1; URL=/requirements">
+		</noscript>
+	</head>
+	<body>
+		<!-- loading overlay -->
+		<div id="curtain">
+			<div id="loading">
+				Loading Telephone
+				<img src="/graphics/lone-phone.png" alt="phone">
+			</div>
+		</div>	
+
+		<!-- play area -->
+		<div id="stageframe">
+			<div id="stage">
+				<div id="header">
+					<div id="header-shadow"></div>
+				</div>
+				<div id="scrollfield">
+					<div id="content">
+
+						<!-- flash widgets -->
+						<div class="widget" id="ringer"></div>
+						<div class="widget" id="ringer2"></div>						
+						<div class="widget" id="clock"></div>
+						<div class="widget" id="stapler"></div>
+						<div class="widget" id="radio"></div>
+						<div class="widget" id="cables"></div>						
+	
+						<!-- name form -->
+						<h1 id="hello">Hello</h1>
+						<p id="introduction">Enter your name in the box below and invite your friends to join this game of Telephone. Remember, you need at least 3 people to play.</p>
+						<form id="enter-name" action="">
+							<input class="text" type="text" value="$name" maxlength="15">
+							<input class="button" type="submit" value="">
+						</form>
+
+						<!-- starting phrase form -->			
+						<form id="enter-start-phrase" class="hidden" action="">
+ 							<input class="text" type="text" value="Type in what you plan to say" maxlength="140">
+							<input class="button" type="submit" value="">							
+						</form>
+
+						<!-- connecting message -->
+						<div id="connecting-to-tokbox" class="messagebox">
+							Connecting your call!
+						</div>
+
+						<!-- waiting for players -->
+						<form id="waiting-for-players" class="messagebox hidden">
+							We need at least three players to start.<br>Send someone the link!<br><input type="text" class="share-url" readonly="readonly" value="http://telephone.opentok.com">
+							<!-- <div id="copylink">(Copy to clipboard.)</div> -->
+						</form>
+
+						<!-- waiting for the Talker -->			
+						<div id="waiting-for-start-phrase" class="messagebox hidden">
+							Waiting for <span class="name-message">the first player</span> to type in the phrase.
+						</div>
+
+						<!-- got it Bubble -->			
+						<form id="got-it" class="messagebox hidden" action="">
+							Got it? Time left: <span class="timer">Timer</span> <input class="button" type="submit" value="">
+						</form>
+
+						<!-- talker message and timer -->
+						<div id="talker-message" class="messagebox hidden">						
+							Tell <span class="listener-name">the next player</span> the message!<br>Time left: <span class="timer">00:00</span>
+						</div>
+						
+						<!-- waiting for people to talk and listen -->
+						<div id="waiting-message" class="messagebox hidden">						
+							Hold on. <span class="talker-name">the talker</span> is telling <span class="listener-name">the listener</span> the message!<br>Time left: <span class="timer">00:00</span>
+						</div>						
+
+						<!-- ending phrase form -->
+						<form id="enter-end-phrase" class="hidden" action="">
+ 							<input class="text" type="text" value="Type in what you think you heard" maxlength="140">
+							<input class="button" type="submit" value="">							
+						</form>
+						
+						<!-- waiting for the end phrase -->			
+						<div id="waiting-for-end-phrase" class="messagebox hidden">
+							<p>Waiting for <span class="name-message">the first player</span> to type in what they heard.</p>
+						</div>												
+
+						<div id="consoles">
+							
+						$for i in range(5):
+							<!-- Console $i -->			
+							<div class="console empty">
+								<div class="screen">
+									<div class="camera-placeholder"></div>
+								</div>
+								
+								<p class="osd"></p>
+								<div class="light-backing"></div>				
+								<div class="light hidden"></div>						
+								<img class="overlay" src="/graphics/console.png" alt="console">
+								<img class="tape" src="/graphics/tape-${i}.png" alt="tape">
+								<p class="nametag"></p>
+								<div class="hoverpad"></div>								
+								<span class="debug hidden">Debug</span>
+							</div>
+
+						</div>
+						
+
+						
+						<!-- final bubble -->			
+						<form id="final-bubble" action="/" method="post">
+							<span id="startPhrase">Starting phrase</span>
+							<span id="endPhrase">Ending phrase</span>
+							<input type="hidden" name="name" value="Your Name">
+							<input class="button" type="submit" value="">							
+						</form>						
+						
+					</div>
+					<div id="footer">
+						<!-- abort -->
+						<a id="abort" href="#">Is someone ignoring the game?<br>Click here for a new round of Telephone.</a>					
+					</div>
+				</div>
+				<div id="credits">
+					<a href="http://www.tokbox.com/" target="_blank"><img src="/graphics/opentok-logo.png" alt="Powered by TokBox via the OpenTok API"></a><a href="http://carbonpictures.com/" target="_blank"><img src="/graphics/carbon-pictures-logo.png" alt="Designed and Developed by Carbon Pictures"></a>
+				</div>
+				<div class="stage-shadow" id="stage-shadow-top"></div>
+				<div class="stage-shadow" id="stage-shadow-right"></div>
+				<div class="stage-shadow" id="stage-shadow-bottom"></div>
+				<div class="stage-shadow" id="stage-shadow-left"></div>
+			</div>
+			<div class="stage-border" id="stage-border-top"></div>
+			<div class="stage-border" id="stage-border-right"></div>
+			<div class="stage-border" id="stage-border-bottom"></div>
+			<div class="stage-border" id="stage-border-left"></div>
+		</div>
+		<div id="tokbox_console"></div>
+	</body>
+</html>

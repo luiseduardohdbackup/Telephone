@@ -1,0 +1,126 @@
+/* embedded font */
+@font-face { font-family: 'AvantGarde'; src: url('/css/fonts/itcavantgardestd-bk-webfont.eot'); } /* for internet explorer */
+@font-face { font-family: 'AvantGarde'; src: url(//:) format('no404'), url('/css/fonts/itcavantgardestd-bk-webfont.woff') format('woff'), url('/css/fonts/itcavantgardestd-bk-webfont.ttf') format('truetype'), url('/css/fonts/itcavantgardestd-bk-webfont.svg#webfontXs4IfWun') format('svg'); font-weight: normal; font-style: normal; }
+@font-face { font-family: 'AvantGardeBold'; src: url('/css/fonts/itcavantgardestd-bold-webfont.eot'); } /* for internet explorer */
+@font-face { font-family: 'AvantGardeBold'; src: url('/css/fonts/itcavantgardestd-bold-webfont.eot?') format('eot'), url('/css/fonts/itcavantgardestd-bold-webfont.woff') format('woff'), url('/css/fonts/itcavantgardestd-bold-webfont.ttf') format('truetype'), url('/css/fonts/itcavantgardestd-bold-webfont.svg#webfontGg0JzGwO') format('svg'); font-weight: normal; font-style: normal; }
+
+/* global styles, but note that this is post reset */
+html, body { font-family: 'AvantGarde', Helvetica, Arial, Verdana, sans-serif; width: 100%; height: 100%; overflow: hidden; color: white; font-size: 11px;	letter-spacing: 0.1em; }
+body { background: #36b449; }
+h1 { font-family: 'AvantGardeBold', Helvetica, Arial, Verdana, sans-serif; font-size: 60px; letter-spacing: 0; }
+a {	color: white; }
+.hidden {	display: none; } /* for template markup, messages, etc. */
+
+/* overlay to hide content during loading */
+div#curtain {	width: 100%; height: 100%; position: absolute; left: 0; top: 0;	background: #36b449; z-index: 3; }
+div#curtain img {	position: absolute;	left: 50%; top: 50%; margin-top: -200px; margin-left: -85px; }
+div#loading {	font-family: Helvetica, Arial, Verdana, sans-serif;	width: 300px;	height: 70px;	font-size: 30px; font-weight: bold; text-align: center;	position: absolute; left: 50%; top: 50%; padding: 10px; margin: -50px 0 0 -150px; }
+
+/* main layout */
+div#stageframe { position:absolute; left: 50%; top: 50%; width: 1100px;	height: 792px; margin: -396px 0 0 -550px; }
+div#stage { position:absolute; left: 50px; top: 50px; width: 999px;	height: 690px; }
+div#header { position: absolute; left: 0px; top: 0px; width: 999px;	height: 100px; background: #aedfe5;	background-image: url(/graphics/header.jpg); }
+div#header-shadow { position: absolute; left: 0px; top: 0px; width: 999px;	height: 100px; background-image: url(/graphics/header-shadow.png); }
+div#scrollfield { position: absolute;	left: 0; top: 100px; width: 100%; height: 590px; overflow: hidden; }
+div#content {	position: absolute;	left: 0; top: 0; width: 3815px; height: 510px; background-color: #43b945; background-image: url(/graphics/background-equipment.jpg); background-repeat: no-repeat; }
+div#footer { position: absolute; left: 0;	top: 510px;	width: 5000px; height: 80px; background-image: url(/graphics/footer-background.gif); background-repeat: repeat-x; }
+
+/* frame-like border around the stage */ 	
+div.stage-border { position: absolute; }			
+#stage-border-top { background-image: url(/graphics/stage-border-top.gif); width: 1100px; height: 50px; left: 0; top: 0; }
+#stage-border-right { background-image: url(/graphics/stage-border-right.gif); width: 51px; height: 690px; left: 1049px; top: 50px; }
+#stage-border-bottom { background-image: url(/graphics/stage-border-bottom.gif); width: 100px; height: 52px; left: 0; top: 740px; }			
+#stage-border-left { background-image: url(/graphics/stage-border-left.gif); width: 50px; height: 690px; left: 0; top: 50px; }				
+
+/* drop shadow inside the stage */
+div.stage-shadow { position: absolute; z-index: 1; }
+#stage-shadow-top { background-image: url(/graphics/stage-shadow-top.png); width: 999px; height: 121px; left: 0; top: 100px; }
+#stage-shadow-right { background-image: url(/graphics/stage-shadow-right.png); width: 162px; height: 348px; left: 837px; top: 221px; }
+#stage-shadow-bottom { background-image: url(/graphics/stage-shadow-bottom.png); width: 999px; height: 121px; left: 0; top: 569px; }
+#stage-shadow-left { background-image: url(/graphics/stage-shadow-left.png); width: 162px; height: 348px; left: 0; top: 221px; }
+
+/* flash widgets */
+.widget { position: absolute; }
+#clock { left: 1653px; top: 4px; width: 160px; height: 160px; }
+#ringer {	left: 454px; top: 322px; width: 200px; height: 200px; }
+#ringer2 { left: 1850px; top: 118px; width: 120px; height: 130px; }
+#stapler { left: 370px; top: 456px;	width: 120px;	height: 50px; }
+#radio { left: 2933px; top: 131px; width: 150px; height: 120px; }
+#cables {	left: 1569px;	top: 460px;	width: 899px;	height: 130px; z-index: 1; }
+
+/* greeting */
+h1#hello { position: absolute; left: 32px; top: 18px; z-index: 2; }
+p#introduction { position: absolute; left: 32px; top: 87px; width: 588px; font-size: 18px; z-index: 2; }
+
+/* the player console */
+div#consoles { position: absolute; width: 899px; height:250px; left: 1569px; top: 253px; }
+div.console {	position: relative;	float: left; width: 173px; height: 250px;	margin-left: 6px; }
+div.console img.overlay {	position: absolute;	left: 0; top: 0; }
+div.console p.osd { position: absolute;	left: 22px;	top: 72px; color: #3cff00; font-size: 14px; font-weight: bold; font-family: "Courier New", Courier, Monaco, monospace; }
+div.console img.tape { position: absolute; left: 9px; top: 6px; }
+div.console p.nametag {	position: absolute;	left: 16px;	top: 12px; color: #626263; font-size: 12px;	font-family: Helvetica, Arial, Verdana, sans-serif; width: 83px; overflow: hidden; }
+div.console div.light-backing {	position: absolute;	left: 146px; top: 13px; width: 18px; height: 18px; background: #414142;	}
+div.console div.light {	position: absolute;	left: 146px; top: 13px; width: 18px; height: 18px; background: #ed1c24;	}
+div.console span.debug { position: absolute; left: 5px;	top: 210px; max-width: 153px; padding: 5px; font-family: Helvetica, Arial, Verdana, sans-serif; font-size: 10px; background: black; }
+div.console div.screen { position: absolute; left: 7px; top: 57px; width: 160px; height: 120px; background: black; }
+div.console div.used { background: url(/graphics/snow.gif); } /* active consoles have snowy background */
+div.console div.screen object {	position: absolute;	left: 0; top: 0; } /* the flash object */
+/* div.console:hover div.screen object {	z-index: 4; } javascript handles this because of inner shadow obstruction */
+div.console div.hoverpad { background: transparent; left: 7px; top: 57px; width: 160px; height: 120px; position: absolute; z-index: 5; }
+
+/* basic rounded message window */
+.messagebox {	position: absolute; top: 25px; left: 1824px; max-width: 660px; width: 660px;	height: 221px; font-size: 30px; text-align: right; }
+
+/* forms and message overlays */
+form { position: absolute; }
+input {	position: absolute; outline: none;	border: none;	z-index: 2; color: #4ab873;	}
+input:focus, input:active {	outline: none; } /* squish the marching ants */
+input.text {line-height: 72px; font-size: 36px;	background: white; 	padding-top: 0; padding-right: 15px; padding-bottom: 0; padding-left: 15px; } /* no shorthand for IE8 */
+form input.error { color: white !important;	background-image: none !important; background: #ed1C24 !important; }
+input.button { cursor: pointer;	background-color: transparent; background-position: top; }
+input.button:hover, input.pressed { background-position: bottom; }
+input.share-url { cursor: text; background: transparent; color: white; display: block; float: right; position: relative; text-align: right; width: 660px; z-index: 5; }
+
+/* TODO explicitly position and size enter name form container */
+form#enter-name input.text { left: 32px; top: 165px; width: 556px;	height: 83px;	background-image: url(/graphics/entername-shadow.png); }
+form#enter-name input.button { left: 190px; top: 270px; width: 428px; height: 89px; background-image: url(/graphics/ok-button.png); }
+
+form#enter-start-phrase, form#enter-end-phrase { top: 30px; left: 1835px; width: 645px; height: 194px; }
+form#enter-start-phrase input.text, form#enter-end-phrase input.text { left: 0; top: 0; width: 615px;	height: 83px; } /* TODO input inner shadow */
+form#enter-start-phrase input.button, form#enter-end-phrase input.button { right: 0;	top: 103px; width: 428px; height: 89px; background-image: url(/graphics/ok-button.png); }
+
+form#got-it input.button { display: inline; line-height: 45px; margin-left: 10px; position: relative; width: 202px; height: 43px; background-image: url(/graphics/yes-button.png); }
+
+div#copylink { position: absolute; left: 0;	top: 0;	background: red; } /* TODO this is broken */
+
+/* final bubble, phrases revealed */
+form#final-bubble { top: 18px; left: 3190px; width: 611px; height: 352px; background: url(/graphics/final-bubble.png); }
+form#final-bubble span { display: block; position: absolute; left: 22px; width: 560px;	max-width: 560px;	font-size: 20px; } /* dynamically resized to fit by javascript */
+form#final-bubble span#startPhrase { top: 25px; }
+form#final-bubble span#endPhrase { top: 135px; }
+form#final-bubble input.button { left: 384px; top: 225px; width: 202px;	height: 43px; background-image: url(/graphics/play-again-button.png); }
+
+/* credit links */
+div#credits { position: absolute;	left: 13px;	top: 648px;	width: 375px;	height: 32px;	z-index: 2; }
+div#credits a {	display: inline-block; }
+/* div#credits a:hover { background: white; } */
+
+/* basic pages -- overrides the screen.css sheet for basic pages, like the 404 and system requirements pages */
+body#basic { background: #f7f6e2;	}
+body#basic div#header { background-image: none; }
+body#basic div#content { width: 999px; background-image: none; }
+body#basic img#lone-phone { position: absolute; bottom: 5px; right: 136px; }
+body#basic h1 { position: absolute; left: 160px; top: 105px; }
+body#basic p { position: absolute; left: 160px;	top: 195px; width: 588px; font-size: 18px; line-height: 1.3em; }
+
+/* abort link */
+a#abort { position: absolute; left: 2250px; bottom: 15px; text-align: right; z-index: 5; color: #a3bad0; text-decoration: none; font-size: 10px; }
+a#abort:hover { color: white; }
+
+/* todo figure out what to do with this */
+#talker-message { }
+#talker-message p {	font-size: 26px; padding: 10px 20px; }
+
+/* highlighting */
+::-moz-selection{ background: #55677a; text-shadow: none; }
+::selection { background:#55677a; text-shadow: none; }
